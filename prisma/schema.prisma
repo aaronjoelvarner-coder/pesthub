@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role { ADMIN DISPATCHER TECH }
+enum JobStatus { SCHEDULED EN_ROUTE ON_SITE COMPLETED INVOICED PAID }
+enum InvoiceStatus { DRAFT SENT PAID VOID }
+enum IntegrationProvider { STRIPE TWILIO QBO }
+enum IntegrationState { SUCCESS ERROR }
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String?
+  role         Role
+  jobs         Job[]    @relation("AssignedTech")
+  events       JobEvent[]
+  createdAt    DateTime @default(now())
+}
+
+model Customer {
+  id         String   @id @default(cuid())
+  name       String
+  email      String?
+  phone      String
+  properties Property[]
+  createdAt  DateTime @default(now())
+}
+
+model Property {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  address1   String
+  address2   String?
+  city       String
+  state      String
+  postalCode String
+  lat        Float?
+  lng        Float?
+  jobs       Job[]
+}
+
+model ServicePlan {
+  id           String   @id @default(cuid())
+  customerId   String
+  propertyId   String
+  frequency    String
+  lookaheadDays Int     @default(30)
+  nextRunDate  DateTime
+  active       Boolean  @default(true)
+}
+
+model Job {
+  id               String     @id @default(cuid())
+  customerId       String
+  propertyId       String
+  property         Property   @relation(fields: [propertyId], references: [id])
+  assignedTechId   String?
+  assignedTech     User?      @relation("AssignedTech", fields: [assignedTechId], references: [id])
+  scheduledAt      DateTime
+  status           JobStatus  @default(SCHEDULED)
+  notes            String?
+  checklistRequired Boolean   @default(true)
+  hasPendingOffline Boolean   @default(false)
+  events           JobEvent[]
+  checklistItems   JobChecklistItem[]
+  photos           Photo[]
+  invoice          Invoice?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+model JobEvent {
+  id        String   @id @default(cuid())
+  jobId      String
+  job        Job      @relation(fields: [jobId], references: [id])
+  actorId    String
+  actor      User     @relation(fields: [actorId], references: [id])
+  type       String
+  payload    Json
+  createdAt  DateTime @default(now())
+}
+
+model JobChecklistItem {
+  id        String   @id @default(cuid())
+  jobId      String
+  job        Job      @relation(fields: [jobId], references: [id])
+  label      String
+  completed  Boolean  @default(false)
+}
+
+model Photo {
+  id        String   @id @default(cuid())
+  jobId      String
+  job        Job      @relation(fields: [jobId], references: [id])
+  path       String
+  createdAt  DateTime @default(now())
+}
+
+model Invoice {
+  id            String          @id @default(cuid())
+  jobId          String          @unique
+  job            Job             @relation(fields: [jobId], references: [id])
+  status         InvoiceStatus   @default(DRAFT)
+  totalCents     Int
+  externalQboId  String?
+  checkoutUrl    String?
+  lineItems      InvoiceLineItem[]
+  payments       Payment[]
+  createdAt      DateTime        @default(now())
+}
+
+model InvoiceLineItem {
+  id            String   @id @default(cuid())
+  invoiceId      String
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id])
+  description    String
+  quantity       Int
+  unitPriceCents Int
+}
+
+model Payment {
+  id           String   @id @default(cuid())
+  invoiceId     String
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id])
+  provider      String
+  externalId    String?
+  amountCents   Int
+  createdAt     DateTime @default(now())
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  companyId  String
+  channel    String
+  recipient  String
+  content    String
+  status     String
+  createdAt  DateTime @default(now())
+}
+
+model IntegrationStatus {
+  id         String            @id @default(cuid())
+  provider   IntegrationProvider
+  status     IntegrationState
+  entityId   String?
+  message    String
+  createdAt  DateTime          @default(now())
+}
